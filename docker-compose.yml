@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-truthcheck}
+      POSTGRES_USER: ${POSTGRES_USER:-truthcheck}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-truthcheck_dev}
+    ports: ["5432:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-truthcheck}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-truthcheck_dev}
+    ports: ["5672:5672", "15672:15672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-truthcheck}:${POSTGRES_PASSWORD:-truthcheck_dev}@postgres:5432/${POSTGRES_DB:-truthcheck}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-truthcheck}:${RABBITMQ_PASSWORD:-truthcheck_dev}@rabbitmq:5672/
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+  worker1:
+    build: ./workers
+    environment:
+      WORKER_ID: worker1
+      QUEUE_NAME: news.analysis.worker1
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-truthcheck}:${RABBITMQ_PASSWORD:-truthcheck_dev}@rabbitmq:5672/
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+  worker2:
+    build: ./workers
+    environment:
+      WORKER_ID: worker2
+      QUEUE_NAME: news.analysis.worker2
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-truthcheck}:${RABBITMQ_PASSWORD:-truthcheck_dev}@rabbitmq:5672/
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+  worker3:
+    build: ./workers
+    environment:
+      WORKER_ID: worker3
+      QUEUE_NAME: news.analysis.worker3
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-truthcheck}:${RABBITMQ_PASSWORD:-truthcheck_dev}@rabbitmq:5672/
+    depends_on:
+      rabbitmq: {condition: service_healthy}
+  frontend:
+    build: ./frontend
+    ports: ["3000:80"]
+    depends_on: [backend]
+volumes:
+  postgres_data:
